@@ -9,132 +9,52 @@ class CenterCrop(nn.Module):
         self.crop = transforms.CenterCrop(size)
     
     def forward(self, x):
-        cropped_x = self.crop(x)
-        return cropped_x
-
-class UNetOriginal(nn.Module):
-    def __init__(self):
+        return self.crop(x)
+    
+class UNetConvBlock(nn.Module):
+    def __init__(self, crop_size, in_channels, out_channels):
         super().__init__()
 
-        # Reused layers
-        self.relu = nn.ReLU()
-        self.down_sample = nn.MaxPool2d(kernel_size=(2,2))
-        self.up_sample = nn.Upsample(scale_factor=2)
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, padding=1),
+            nn.ReLU(),
+        )
 
-        # Contracting Path
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=64, kernel_size=3)
-        self.conv2 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3)
-        self.crop1 = CenterCrop(392)
-
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3)
-        self.conv4 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3)
-        self.crop2 = CenterCrop(200)
-
-        self.conv5 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3)
-        self.conv6 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3)
-        self.crop3 = CenterCrop(104)
-
-        self.conv7 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3)
-        self.conv8 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3)
-        self.crop4 = CenterCrop(56)
-
-        self.conv9 = nn.Conv2d(in_channels=512, out_channels=1024, kernel_size=3)
-        self.conv10 = nn.Conv2d(in_channels=1024, out_channels=1024, kernel_size=3)
-
-        # Expansive Path
-        self.conv11 = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=1)
-        self.conv12 = nn.Conv2d(in_channels=1024, out_channels=512, kernel_size=3)
-        self.conv13 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3)
-
-        self.conv14 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=1)
-        self.conv15 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3)
-        self.conv16 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3)
-
-        self.conv17 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=1)
-        self.conv18 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3)
-        self.conv19 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3)
-
-        self.conv20 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=1)
-        self.conv21 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3)
-        self.conv22 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3)
-
-        self.conv23 = nn.Conv2d(in_channels=64, out_channels=2, kernel_size=1)
+        self.crop = CenterCrop(crop_size)
 
     def forward(self, x):
-        # Contracting Path
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        across1 = self.crop1(x)
-        x = self.down_sample(x)
-        
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
-        across2 = self.crop2(x)
-        x = self.down_sample(x)
-        
-        x = self.relu(self.conv5(x))
-        x = self.relu(self.conv6(x))
-        across3 = self.crop3(x)
-        x = self.down_sample(x)
-        
-        x = self.relu(self.conv7(x))
-        x = self.relu(self.conv8(x))
-        across4 = self.crop4(x)
-        z = self.down_sample(x)
+        x = self.block(x)
+        crop = self.crop(x)
 
-        x = self.relu(self.conv9(z))
-        x = self.relu(self.conv10(x))
-        
-        # Expansive Path
-        x = self.up_sample(x)
-        x = self.conv11(x)
-        x = torch.cat([across4, x], dim=1)
-        x = self.relu(self.conv12(x))
-        x = self.relu(self.conv13(x))
+        return x, crop
     
-        x = self.up_sample(x)
-        x = self.conv14(x)
-        x = torch.cat([across3, x], dim=1)
-        x = self.relu(self.conv15(x))
-        x = self.relu(self.conv16(x))
-    
-        x = self.up_sample(x)    
-        x = self.conv17(x)
-        x = torch.cat([across2, x], dim=1)
-        x = self.relu(self.conv18(x))
-        x = self.relu(self.conv19(x))
+class UNetUpBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, up_mode="upconv"):
+        super().__init__()
 
-        x = self.up_sample(x)
-        x = self.conv20(x)
-        x = torch.cat([across1, x], dim=1)
-        x = self.relu(self.conv21(x))
-        x = self.relu(self.conv22(x))
-        
-        x = self.conv23(x)
-    
-        return x, z
+        if up_mode == "upconv":
+            self.up = nn.ConvTranspose2d(in_channels=in_channels, out_channels=out_channels,
+                                    kernel_size=2, stride=2)
+        else:
+            self.up = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode="bilinear"),
+                nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+            )
 
-# model = UNet()
-# dummy_data = torch.randn((2, 1, 572, 572))
-# x, z = model(dummy_data)
-# print(x.shape, z.shape)
+        self.block = UNetConvBlock(crop_size=64, in_channels=in_channels,
+                                   out_channels=out_channels)
 
-# model = UNet()
-# works = []
-# for i in range(100, 601):
-#     print(i)
-#     try:
-#         dummy_data = torch.randn((2, 1, i, i))
-#         x, z = model(dummy_data)
-#         print(x.shape, z.shape)
-#         works.append(i)
-#     except:
-#         pass
+    def forward(self, x, skip):
+        x = self.up(x)
+        x = torch.cat([skip, x], dim=1)
+        x, _ = self.block(x)
 
-# print(works)
+        return x
 
 class UNet(nn.Module):
-    def __init__(self, img_size, num_channel=1, first_out=64):
+    def __init__(self, img_size, num_channel=1, first_out=64, up_mode="deconv"):
         super().__init__()
 
         second_out = first_out * 2
@@ -145,200 +65,66 @@ class UNet(nn.Module):
         # Reused layers
         self.relu = nn.ReLU()
         self.down_sample = nn.MaxPool2d(kernel_size=(2,2))
-        self.up_sample = nn.Upsample(scale_factor=2)
 
         # Contracting Path
-        self.conv1 = nn.Conv2d(in_channels=num_channel, out_channels=first_out, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=first_out, out_channels=first_out, kernel_size=3, padding=1)
-        self.crop1 = CenterCrop(img_size)
-
-        self.conv3 = nn.Conv2d(in_channels=first_out, out_channels=second_out, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(in_channels=second_out, out_channels=second_out, kernel_size=3, padding=1)
-        self.crop2 = CenterCrop(img_size // 2)
-
-        self.conv5 = nn.Conv2d(in_channels=second_out, out_channels=third_out, kernel_size=3, padding=1)
-        self.conv6 = nn.Conv2d(in_channels=third_out, out_channels=third_out, kernel_size=3, padding=1)
-        self.crop3 = CenterCrop(img_size // 4)
-
-        self.conv7 = nn.Conv2d(in_channels=third_out, out_channels=fourth_out, kernel_size=3, padding=1)
-        self.conv8 = nn.Conv2d(in_channels=fourth_out, out_channels=fourth_out, kernel_size=3, padding=1)
-        self.crop4 = CenterCrop(img_size // 8)
-
-        self.conv9 = nn.Conv2d(in_channels=fourth_out, out_channels=fifth_out, kernel_size=3, padding=1)
-        self.conv10 = nn.Conv2d(in_channels=fifth_out, out_channels=fifth_out, kernel_size=3, padding=1)
-
+        self.down1 = UNetConvBlock(crop_size=img_size, in_channels=num_channel,
+                                   out_channels=first_out)
+        self.down2 = UNetConvBlock(crop_size=img_size // 2, in_channels=first_out,
+                                   out_channels=second_out)
+        self.down3 = UNetConvBlock(crop_size=img_size // 4, in_channels=second_out,
+                                   out_channels=third_out)
+        self.down4 = UNetConvBlock(crop_size=img_size // 8, in_channels=third_out,
+                                   out_channels=fourth_out)
+        self.down5 = UNetConvBlock(crop_size=img_size // 16, in_channels=fourth_out,
+                                   out_channels=fifth_out)
+        
         # Expansive Path
-        self.conv11 = nn.Conv2d(in_channels=fifth_out, out_channels=fourth_out, kernel_size=1)
-        self.conv12 = nn.Conv2d(in_channels=fifth_out, out_channels=fourth_out, kernel_size=3, padding=1)
-        self.conv13 = nn.Conv2d(in_channels=fourth_out, out_channels=fourth_out, kernel_size=3, padding=1)
+        self.up1 = UNetUpBlock(in_channels=fifth_out, out_channels=fourth_out, up_mode=up_mode)
+        self.up2 = UNetUpBlock(in_channels=fourth_out, out_channels=third_out, up_mode=up_mode)
+        self.up3 = UNetUpBlock(in_channels=third_out, out_channels=second_out, up_mode=up_mode)
+        self.up4 = UNetUpBlock(in_channels=second_out, out_channels=first_out, up_mode=up_mode)
 
-        self.conv14 = nn.Conv2d(in_channels=fourth_out, out_channels=third_out, kernel_size=1)
-        self.conv15 = nn.Conv2d(in_channels=fourth_out, out_channels=third_out, kernel_size=3, padding=1)
-        self.conv16 = nn.Conv2d(in_channels=third_out, out_channels=third_out, kernel_size=3, padding=1)
-
-        self.conv17 = nn.Conv2d(in_channels=third_out, out_channels=second_out, kernel_size=1)
-        self.conv18 = nn.Conv2d(in_channels=third_out, out_channels=second_out, kernel_size=3, padding=1)
-        self.conv19 = nn.Conv2d(in_channels=second_out, out_channels=second_out, kernel_size=3, padding=1)
-
-        self.conv20 = nn.Conv2d(in_channels=second_out, out_channels=first_out, kernel_size=1)
-        self.conv21 = nn.Conv2d(in_channels=second_out, out_channels=first_out, kernel_size=3, padding=1)
-        self.conv22 = nn.Conv2d(in_channels=first_out, out_channels=first_out, kernel_size=3, padding=1)
-
+        # There are 23 convolutions total in original model
         self.conv23 = nn.Conv2d(in_channels=first_out, out_channels=num_channel, kernel_size=1)
 
     def forward(self, x):
         # Contracting Path
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        across1 = self.crop1(x)
+        skip = []
+
+        x, crop = self.down1(x)
+        skip.append(crop)
         x = self.down_sample(x)
         
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
-        across2 = self.crop2(x)
+        x, crop = self.down2(x)
+        skip.append(crop)
         x = self.down_sample(x)
         
-        x = self.relu(self.conv5(x))
-        x = self.relu(self.conv6(x))
-        across3 = self.crop3(x)
+        x, crop = self.down3(x)
+        skip.append(crop)
         x = self.down_sample(x)
         
-        x = self.relu(self.conv7(x))
-        x = self.relu(self.conv8(x))
-        across4 = self.crop4(x)
+        x, crop = self.down4(x)
+        skip.append(crop)
+
+        # Point where the features have lowest dimension
         z = self.down_sample(x)
         z_flat = z.view(z.shape[0], -1)
 
-        x = self.relu(self.conv9(z))
-        x = self.relu(self.conv10(x))
-        
+        x, _ = self.down5(z)
+
         # Expansive Path
-        x = self.up_sample(x)
-        x = self.conv11(x)
-        x = torch.cat([across4, x], dim=1)
-        x = self.relu(self.conv12(x))
-        x = self.relu(self.conv13(x))
-    
-        x = self.up_sample(x)
-        x = self.conv14(x)
-        x = torch.cat([across3, x], dim=1)
-        x = self.relu(self.conv15(x))
-        x = self.relu(self.conv16(x))
+        x = self.up1(x, skip[3])
+        x = self.up2(x, skip[2])
+        x = self.up3(x, skip[1])
+        x = self.up4(x, skip[0])
 
-        x = self.up_sample(x)    
-        x = self.conv17(x)
-        x = torch.cat([across2, x], dim=1)
-        x = self.relu(self.conv18(x))
-        x = self.relu(self.conv19(x))
-
-        x = self.up_sample(x)
-        x = self.conv20(x)
-        x = torch.cat([across1, x], dim=1)
-        x = self.relu(self.conv21(x))
-        x = self.relu(self.conv22(x))
-        
         x = self.conv23(x)
     
         return x, z, z_flat
     
 # img_size = 224
-# model = UNet(img_size=img_size, num_channel=1, first_out=2)
+# model = UNet(img_size=img_size, num_channel=1, first_out=2, up_mode="upsamp")
+# print(model)
 # dummy = torch.randn((2, 1, img_size, img_size))
 # x, z, z_flat = model(dummy)
-# print(x.shape, z.shape, z_flat.shape)
-
-class SmallUNet(nn.Module):
-    def __init__(self, img_size, first_out=4):
-        super().__init__()
-
-        second_out = first_out * 2
-        third_out = second_out * 2
-        fourth_out = third_out * 2
-        fifth_out = fourth_out * 2
-
-        # Reused layers
-        self.relu = nn.ReLU()
-        self.down_sample = nn.MaxPool2d(kernel_size=(2,2))
-        self.up_sample = nn.Upsample(scale_factor=2)
-
-        # Contracting Path
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=first_out, kernel_size=3, padding=1)
-        self.crop1 = CenterCrop(img_size)
-
-        self.conv2 = nn.Conv2d(in_channels=first_out, out_channels=second_out, kernel_size=3, padding=1)
-        self.crop2 = CenterCrop(img_size // 2)
-
-        self.conv3 = nn.Conv2d(in_channels=second_out, out_channels=third_out, kernel_size=3, padding=1)
-        self.crop3 = CenterCrop(img_size // 4)
-
-        self.conv4 = nn.Conv2d(in_channels=third_out, out_channels=fourth_out, kernel_size=3, padding=1)
-        self.crop4 = CenterCrop(img_size // 8)
-
-        self.conv5 = nn.Conv2d(in_channels=fourth_out, out_channels=fifth_out, kernel_size=3, padding=1)
-
-        # Expansive Path
-        self.conv6 = nn.Conv2d(in_channels=fifth_out, out_channels=fourth_out, kernel_size=1)
-        self.conv7 = nn.Conv2d(in_channels=fifth_out, out_channels=fourth_out, kernel_size=3, padding=1)
-
-        self.conv8 = nn.Conv2d(in_channels=fourth_out, out_channels=third_out, kernel_size=1)
-        self.conv9 = nn.Conv2d(in_channels=fourth_out, out_channels=third_out, kernel_size=3, padding=1)
-
-        self.conv10 = nn.Conv2d(in_channels=third_out, out_channels=second_out, kernel_size=1)
-        self.conv11 = nn.Conv2d(in_channels=third_out, out_channels=second_out, kernel_size=3, padding=1)
-        
-        self.conv12 = nn.Conv2d(in_channels=second_out, out_channels=first_out, kernel_size=1)
-        self.conv13 = nn.Conv2d(in_channels=second_out, out_channels=first_out, kernel_size=3, padding=1)
-
-        self.conv14 = nn.Conv2d(in_channels=first_out, out_channels=1, kernel_size=1)
-
-    def forward(self, x):
-        # Contracting Path
-        x = self.relu(self.conv1(x))
-        across1 = self.crop1(x)
-        x = self.down_sample(x)
-        
-        x = self.relu(self.conv2(x))
-        across2 = self.crop2(x)
-        x = self.down_sample(x)
-
-        x = self.relu(self.conv3(x))
-        across3 = self.crop3(x)
-        x = self.down_sample(x)
-
-        x = self.relu(self.conv4(x))
-        across4 = self.crop4(x)
-        z = self.down_sample(x)
-        z_flat = z.view(z.shape[0], -1)
-
-        x = self.relu(self.conv5(z))
-
-        # Expansive Path
-        x = self.up_sample(x)
-        x = self.conv6(x)
-        x = torch.cat([across4, x], dim=1)
-        x = self.relu(self.conv7(x))
-
-        x = self.up_sample(x)
-        x = self.conv8(x)
-        x = torch.cat([across3, x], dim=1)
-        x = self.relu(self.conv9(x))
-    
-        x = self.up_sample(x)    
-        x = self.conv10(x)
-        x = torch.cat([across2, x], dim=1)
-        x = self.relu(self.conv11(x))
-
-        x = self.up_sample(x)
-        x = self.conv12(x)
-        x = torch.cat([across1, x], dim=1)
-        x = self.relu(self.conv13(x))
-
-        x = self.conv14(x)
-
-        return x, z, z_flat
-
-# img_size = 128
-# model = SmallUNet(img_size=img_size)
-# dummy_data = torch.randn((2, 1, img_size, img_size))
-# x, z, z_flat = model(dummy_data)
 # print(x.shape, z.shape, z_flat.shape)
