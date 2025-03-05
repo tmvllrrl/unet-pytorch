@@ -43,6 +43,7 @@ class UNetUpBlock(nn.Module):
                 nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
             )
 
+        # Crop size doesn't matter for upsampling portion of U-Net
         self.block = UNetConvBlock(crop_size=64, in_channels=in_channels,
                                    out_channels=out_channels)
 
@@ -54,7 +55,7 @@ class UNetUpBlock(nn.Module):
         return x
 
 class UNet(nn.Module):
-    def __init__(self, img_size, num_channel=1, first_out=64, up_mode="deconv"):
+    def __init__(self, img_size, num_channel=1, first_out=8, up_mode="deconv"):
         super().__init__()
 
         second_out = first_out * 2
@@ -122,9 +123,9 @@ class UNet(nn.Module):
     
         return x, z, z_flat
     
-# img_size = 224
-# model = UNet(img_size=img_size, num_channel=1, first_out=2, up_mode="upsamp")
+img_size = 224
+model = UNet(img_size=img_size, num_channel=1, first_out=2, up_mode="upsamp")
 # print(model)
-# dummy = torch.randn((2, 1, img_size, img_size))
-# x, z, z_flat = model(dummy)
-# print(x.shape, z.shape, z_flat.shape)
+dummy = torch.randn((2, 1, img_size, img_size))
+x, z, z_flat = model(dummy)
+print(x.shape, z.shape, z_flat.shape)
