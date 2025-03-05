@@ -60,21 +60,21 @@ class ResNet18UNet(nn.Module):
     def __init__(self, input_ch: int = 3, target_ch: int = 3, up_mode: str ="deconv"):
         super().__init__()
 
-        rn18_model = resnet18(weights=None)
+        self.rn18_model = resnet18(weights=None)
 
         self.down1 = nn.Sequential(
-            rn18_model.conv1,
+            self.rn18_model.conv1,
         )
 
         self.down2 = nn.Sequential(
-            rn18_model.bn1,
-            rn18_model.relu,
-            rn18_model.maxpool,
-            rn18_model.layer1
+            self.rn18_model.bn1,
+            self.rn18_model.relu,
+            self.rn18_model.maxpool,
+            self.rn18_model.layer1
         )
-        self.down3 = rn18_model.layer2
-        self.down4 = rn18_model.layer3
-        self.down5 = rn18_model.layer4
+        self.down3 = self.rn18_model.layer2
+        self.down4 = self.rn18_model.layer3
+        self.down5 = self.rn18_model.layer4
 
         self.down_path = [
             self.down1,
@@ -113,8 +113,8 @@ class ResNet18UNet(nn.Module):
     
         return x
     
-dummy_data = torch.randn(2, 3, 224, 224)
-model = ResNet18UNet(target_ch=1)
-logits = model(dummy_data)
-print(logits.shape)
+# dummy_data = torch.randn(2, 3, 224, 224)
+# model = ResNet18UNet(target_ch=1)
+# logits = model(dummy_data)
+# print(logits.shape)
 
