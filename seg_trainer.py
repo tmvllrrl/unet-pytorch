@@ -102,7 +102,7 @@ class Trainer():
             save_dir
         ) -> None:
         
-        self.device = torch.device('mps') # 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self.model = model
         self.model = model.to(self.device)
