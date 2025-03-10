@@ -1,6 +1,8 @@
 import os
 import torch
+import torch.nn as nn
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
 from torch.utils.data import DataLoader
 
@@ -65,3 +67,47 @@ config = RN18UnetConfig()
 mask_img_dir = 'seg_results/2025Mar10_09:28:19/mask_imgs'
 os.makedirs(mask_img_dir, exist_ok=True)
 save_generated_masks(config, mask_img_dir)
+
+
+def dice_coefficient(pred, target, smooth=1e-6):
+    """
+    Compute the Dice Coefficient
+    :param pred: Predicted tensor (batch_size, num_classes, H, W)
+    :param target: Ground truth tensor (batch_size, num_classes, H, W)
+    :param smooth: Smoothing factor to avoid division by zero
+    :return: Dice coefficient
+    """
+    pred = pred.contiguous()
+    target = target.contiguous()
+    
+    intersection = (pred * target).sum(dim=(2, 3))
+    denominator = pred.sum(dim=(2, 3)) + target.sum(dim=(2, 3))
+    
+    dice = (2. * intersection + smooth) / (denominator + smooth)
+    return dice.mean()
+
+
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1e-6):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+    
+    def forward(self, logits, targets):
+        """
+        Compute Dice Loss
+        :param logits: Raw logits from the model (before softmax/sigmoid)
+        :param targets: Ground truth masks (one-hot encoded for multi-class)
+        :return: Dice loss value
+        """
+        num_classes = logits.shape[1]
+        
+        # Convert logits to probabilities
+        if num_classes == 1:
+            probs = torch.sigmoid(logits)
+            targets = targets.float()
+        else:
+            probs = F.softmax(logits, dim=1)
+            targets = F.one_hot(targets, num_classes).permute(0, 3, 1, 2).float()
+        
+        dice_loss = 1 - dice_coefficient(probs, targets, self.smooth)
+        return dice_loss
