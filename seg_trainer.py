@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 import pandas as pd
 import torch.nn as nn
 import torch.optim as optim
@@ -60,7 +61,7 @@ class RN18UnetConfig():
         
         # Loss function/Optimizer
         self.criterion = nn.BCEWithLogitsLoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=1e-4)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=1e-4)
 
         # Datasets and Dataloaders
         train_transforms = v2.Compose([
@@ -107,7 +108,7 @@ class Trainer():
         self.model = model.to(self.device)
 
         self.criterion = criterion
-        self.optimzer = optimizer
+        self.optimizer = optimizer
 
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
@@ -122,7 +123,7 @@ class Trainer():
             header = f'epoch,train_loss,train_acc,valid_loss,valid_acc'
             stats_csv.write(header + '\n')
 
-        self.ckpt_dir = os.path.join(self.save_dir, 'encoders')
+        self.ckpt_dir = os.path.join(self.save_dir, 'models')
         os.makedirs(self.ckpt_dir, exist_ok=True)
 
     def train(self):
@@ -167,6 +168,7 @@ class Trainer():
                 stats_csv.write(line + "\n")
 
             torch.save(self.model.rn18_model.state_dict(), os.path.join(self.ckpt_dir, f'encoder_{epoch}.pt'))
+            torch.save(self.model.state_dict(), os.path.join(self.ckpt_dir, f'unet_{epoch}.pt'))
 
             print(f"Epoch {epoch+1}/{self.epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Valid Loss: {valid_loss:.4f}, Valid Acc: {valid_acc:.4f}")
 
@@ -186,6 +188,12 @@ class Trainer():
                 # Checking accuracy of model
                 preds = torch.sigmoid(logits)
                 preds = (preds > 0.5).float()
+
+                preds_np = preds.cpu().numpy()
+                count_ones = np.count_nonzero(preds_np == 1.) 
+                unique_values = np.unique(preds_np)
+                print(count_ones, unique_values)
+
                 num_correct += (preds == masks).sum()
                 num_pixels += torch.numel(preds)
                 
@@ -217,3 +225,5 @@ def main() -> None:
     trainer.train()
 
 
+if __name__ == "__main__":
+    main()
